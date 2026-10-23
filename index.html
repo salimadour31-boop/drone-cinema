@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drone Cinema — Ambiances sonores cinématiques</title>
+  <style>
+    :root { --bg: #0d0d12; --fg: #e8e6e3; --accent: #c9a227; --card: #1a1a22; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.5; }
+    header { padding: 1.5rem; text-align: center; border-bottom: 1px solid #333; }
+    h1 { margin: 0; font-size: 1.8rem; color: var(--accent); }
+    .lang { margin-top: 0.5rem; }
+    .lang button { background: #222; color: var(--fg); border: 1px solid #444; margin: 0 0.3rem; padding: 0.3rem 0.8rem; cursor: pointer; border-radius: 4px; }
+    .lang button.active { background: var(--accent); color: #000; }
+    main { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .presets, .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+    button, select { background: var(--card); color: var(--fg); border: 1px solid #444; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+    button:hover { border-color: var(--accent); }
+    button.play { background: #2a5; color: #fff; font-weight: bold; }
+    button.stop { background: #a22; color: #fff; }
+    .controls label { display: flex; align-items: center; gap: 0.5rem; }
+    canvas { width: 100%; height: 120px; background: #111; border-radius: 8px; margin: 1rem 0; display: block; }
+    footer { text-align: center; padding: 1rem; font-size: 0.85rem; color: #888; }
+    @media (max-width: 600px) { h1 { font-size: 1.4rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Drone Cinema</h1>
+    <p id="subtitle">Générateur d'ambiances sonores cinématiques</p>
+    <div class="lang">
+      <button data-lang="fr" class="active">FR</button>
+      <button data-lang="en">EN</button>
+      <button data-lang="tz">TZ</button>
+    </div>
+  </header>
+  <main>
+    <div class="presets" id="presets"></div>
+    <div class="controls">
+      <button id="playBtn" class="play">▶ Play</button>
+      <button id="stopBtn" class="stop">■ Stop</button>
+      <label>Volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.4"></label>
+      <label>Brightness <input type="range" id="bright" min="200" max="8000" step="10" value="1200"></label>
+      <label>Density <input type="range" id="density" min="1" max="8" step="1" value="3"></label>
+    </div>
+    <canvas id="viz"></canvas>
+    <p id="info"></p>
+  </main>
+  <footer>100 % navigateur · Aucune donnée envoyée · MIT · <a href="https://github.com/salimadour31-boop/drone-cinema" style="color:#c9a227">GitHub</a></footer>
+
+  <script>
+    const i18n = {
+      fr: { title: "Drone Cinema", sub: "Générateur d'ambiances sonores cinématiques", play: "▶ Jouer", stop: "■ Arrêter", vol: "Volume", bright: "Clarté", dens: "Densité", info: "Choisissez une ambiance et jouez. Idéal pour fond sonore de montage ou sketch musical.", presets: ["Noir", "Désert", "Espace", "Forêt", "Ville", "Tension"] },
+      en: { title: "Drone Cinema", sub: "Cinematic ambient soundscape generator", play: "▶ Play", stop: "■ Stop", vol: "Volume", bright: "Brightness", dens: "Density", info: "Pick a mood and play. Perfect for edit beds or musical sketches.", presets: ["Noir", "Desert", "Space", "Forest", "City", "Tension"] },
+      tz: { title: "Drone Cinema", sub: "Amsideg n ussuɣ n sinima", play: "▶ Uru", stop: "■ Seḥbes", vol: "Volume", bright: "Tifawt", dens: "Tuzzla", info: "Fren ambiance sakin uru. Yelha i ussuɣ n montage.", presets: ["Noir", "Aneẓruf", "Tallunt", "Aɣlal", "Tamdint", "Tazmert"] }
+    };
+    let lang = "fr";
+    const presetsData = [
+      { name: "Noir", osc: [110, 165, 220], type: "sawtooth", filter: 800 },
+      { name: "Désert", osc: [146, 220, 293], type: "triangle", filter: 1500 },
+      { name: "Espace", osc: [82, 123, 164], type: "sine", filter: 600 },
+      { name: "Forêt", osc: [98, 196, 294], type: "sine", filter: 2000 },
+      { name: "Ville", osc: [130, 195, 260], type: "square", filter: 1000 },
+      { name: "Tension", osc: [174, 233, 311], type: "sawtooth", filter: 400 }
+    ];
+
+    function t(k) { return i18n[lang][k] || k; }
+    function updateUI() {
+      document.getElementById("title").textContent = t("title");
+      document.getElementById("subtitle").textContent = t("sub");
+      document.getElementById("playBtn").textContent = t("play");
+      document.getElementById("stopBtn").textContent = t("stop");
+      document.querySelector("label:nth-of-type(1)").childNodes[0].textContent = t("vol") + " ";
+      document.querySelector("label:nth-of-type(2)").childNodes[0].textContent = t("bright") + " ";
+      document.querySelector("label:nth-of-type(3)").childNodes[0].textContent = t("dens") + " ";
+      document.getElementById("info").textContent = t("info");
+      renderPresets();
+    }
+    function renderPresets() {
+      const el = document.getElementById("presets");
+      el.innerHTML = "";
+      presetsData.forEach((p, i) => {
+        const b = document.createElement("button");
+        b.textContent = i18n[lang].presets[i] || p.name;
+        b.onclick = () => loadPreset(i);
+        el.appendChild(b);
+      });
+    }
+    document.querySelectorAll(".lang button").forEach(btn => {
+      btn.onclick = () => {
+        lang = btn.dataset.lang;
+        document.querySelectorAll(".lang button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        updateUI();
+      };
+    });
+
+    // Audio
+    let ctx, master, filter, noise, nodes = [], playing = false, animId;
+    const canvas = document.getElementById("viz");
+    const c = canvas.getContext("2d");
+    function resize() { canvas.width = canvas.offsetWidth * 2; canvas.height = 240; }
+    window.addEventListener("resize", resize); resize();
+
+    function initAudio() {
+      if (ctx) return;
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain(); master.gain.value = 0.4; master.connect(ctx.destination);
+      filter = ctx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 1200; filter.connect(master);
+      const bufSize = ctx.sampleRate * 2;
+      const noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+      noise = ctx.createBufferSource(); noise.buffer = noiseBuf; noise.loop = true;
+      const noiseGain = ctx.createGain(); noiseGain.gain.value = 0.15;
+      noise.connect(noiseGain); noiseGain.connect(filter);
+    }
+
+    function startDrone(preset) {
+      stopDrone();
+      initAudio();
+      if (ctx.state === "suspended") ctx.resume();
+      const dens = +document.getElementById("density").value;
+      nodes = [];
+      for (let i = 0; i < Math.min(dens, preset.osc.length); i++) {
+        const osc = ctx.createOscillator();
+        osc.type = preset.type;
+        osc.frequency.value = preset.osc[i] * (0.95 + Math.random() * 0.1);
+        const g = ctx.createGain(); g.gain.value = 0.2 / dens;
+        osc.connect(g); g.connect(filter);
+        osc.start();
+        nodes.push(osc);
+      }
+      noise.start();
+      playing = true;
+      animate();
+    }
+    function stopDrone() {
+      nodes.forEach(n => { try { n.stop(); } catch(e){} });
+      nodes = [];
+      if (noise) { try { noise.stop(); } catch(e){} }
+      playing = false;
+      if (animId) cancelAnimationFrame(animId);
+      c.clearRect(0,0,canvas.width,canvas.height);
+    }
+    function loadPreset(i) {
+      const p = presetsData[i];
+      filter.frequency.value = p.filter;
+      document.getElementById("bright").value = p.filter;
+      if (playing) startDrone(p);
+    }
+    document.getElementById("playBtn").onclick = () => startDrone(presetsData[0]);
+    document.getElementById("stopBtn").onclick = stopDrone;
+    document.getElementById("vol").oninput = e => { if (master) master.gain.value = +e.target.value; };
+    document.getElementById("bright").oninput = e => { if (filter) filter.frequency.value = +e.target.value; };
+    document.getElementById("density").oninput = () => { if (playing) startDrone(presetsData[0]); };
+
+    function animate() {
+      if (!playing) return;
+      animId = requestAnimationFrame(animate);
+      const w = canvas.width, h = canvas.height;
+      c.fillStyle = "rgba(13,13,18,0.3)"; c.fillRect(0,0,w,h);
+      c.strokeStyle = "#c9a227"; c.lineWidth = 2;
+      c.beginPath();
+      for (let x = 0; x < w; x += 4) {
+        const y = h/2 + Math.sin(x * 0.02 + Date.now()*0.002) * (h/4) * (0.5 + Math.random()*0.5);
+        c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+    updateUI();
+  </script>
+</body>
+</html>
